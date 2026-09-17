@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ThermaCompute AI — Audit Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .drop-zone {
+            border: 2px dashed #cbd5e0;
+            transition: all 0.3s ease;
+        }
+        .drop-zone.drag-over {
+            border-color: #4299e1;
+            background-color: #ebf8ff;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900 font-sans min-h-screen">
+
+    <nav class="bg-slate-900 text-white p-4 shadow-lg">
+        <div class="container mx-auto flex justify-between items-center">
+            <h1 class="text-xl font-bold tracking-tight">ThermaCompute <span class="text-blue-400">AI</span></h1>
+            <span class="text-sm opacity-70">Diagnostic & Audit Engine v1.0</span>
+        </div>
+    </nav>
+
+    <main class="container mx-auto py-12 px-4">
+        <div class="max-w-4xl mx-auto">
+
+            <!-- Upload Section -->
+            <div class="text-center mb-12">
+                <h2 class="text-3xl font-bold mb-4">Cluster Thermal Audit</h2>
+                <p class="text-slate-600 mb-8">Upload your DCGM CSV telemetry logs to identify financial waste caused by thermal throttling.</p>
+
+                <div id="drop-zone" class="drop-zone bg-white rounded-xl p-12 cursor-pointer text-center">
+                    <div class="flex flex-col items-center">
+                        <svg class="w-12 h-12 text-slate-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.8-7.7A4 4 0 0112 7h4a4 4 0 014 4v4a4 4 0 01-4 4h-4a4 4 0 01-8-8z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 12v6m0 0l-3-3m3 3l3-3"></path>
+                        </svg>
+                        <p class="text-lg font-medium mb-2">Drag and drop DCGM logs here</p>
+                        <p class="text-sm text-slate-500 mb-6">or click to select file</p>
+                        <input type="file" id="file-input" class="hidden" accept=".csv">
+                        <button onclick="document.getElementById('file-input').click()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold transition">
+                            Select CSV File
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results Section (Hidden by default) -->
+            <div id="results" class="hidden space-y-8 animate-in fade-in duration-500">
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <!-- Financial Loss Card -->
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                        <p class="text-sm font-semibold text-slate-500 uppercase">Total Financial Loss</p>
+                        <p id="loss-val" class="text-4xl font-bold text-red-600 mt-2">$0.00</p>
+                    </div>
+                    <!-- Throttled Hours Card -->
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                        <p class="text-sm font-semibold text-slate-500 uppercase">Throttled GPU-Hours</p>
+                        <p id="hours-val" class="text-4xl font-bold text-slate-800 mt-2">0.00h</p>
+                    </div>
+                    <!-- GPUs Affected Card -->
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                        <p class="text-sm font-semibold text-slate-500 uppercase">GPUs Affected</p>
+                        <p id="gpus-val" class="text-4xl font-bold text-slate-800 mt-2">0</p>
+                    </div>
+                </div>
+
+                <div class="flex justify-center">
+                    <a id="download-btn" href="#" class="bg-slate-900 hover:bg-slate-800 text-white px-8 py-4 rounded-xl font-bold text-lg flex items-center transition shadow-lg">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                        Download PDF Audit Report
+                    </a>
+                </div>
+            </div>
+
+            <!-- Loading State -->
+            <div id="loading" class="hidden text-center py-12">
+                <div class="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600 mb-4"></div>
+                <p class="text-slate-600 font-medium">Analyzing telemetry data...</p>
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const results = document.getElementById('results');
+        const loading = document.getElementById('loading');
+
+        // Drag & Drop Handlers
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                dropZone.classList.add('drag-over');
+            }, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('drag-over');
+            }, false);
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            const files = e.dataTransfer.files;
+            if (files.length) handleUpload(files[0]);
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length) handleUpload(e.target.files[0]);
+        });
+
+        async function handleUpload(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            results.classList.add('hidden');
+            loading.classList.remove('hidden');
+
+            try {
+                const response = await fetch('/api/upload-audit', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) throw new Error('Upload failed');
+
+                const data = await response.json();
+
+                // Update UI
+                document.getElementById('loss-val').innerText = `$${data.metrics.summary.total_financial_waste.toFixed(2)}`;
+                document.getElementById('hours-val').innerText = `${data.metrics.summary.total_throttled_hours.toFixed(2)}h`;
+                document.getElementById('gpus-val').innerText = data.metrics.summary.gpus_affected;
+                document.getElementById('download-btn').href = data.report_url;
+
+                loading.classList.add('hidden');
+                results.classList.remove('hidden');
+            } catch (error) {
+                alert('Error processing file: ' + error.message);
+                loading.classList.add('hidden');
+            }
+        }
+    </script>
+</body>
+</html>
